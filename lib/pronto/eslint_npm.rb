@@ -6,8 +6,12 @@ require 'shellwords'
 module Pronto
   class ESLintNpm < Runner
     CONFIG_FILE = '.pronto_eslint_npm.yml'.freeze
-    CONFIG_KEYS = %w[eslint_executable files_to_lint cmd_line_opts].freeze
-    SEVERITY_LEVELS = [nil, :warning, :error].freeze
+    CONFIG_KEYS = %w[eslint_executable files_to_lint cmd_line_opts severities].freeze
+    ESLINT_SEVERITY_LEVELS = [nil, :warn, :error].freeze
+    DEFAULT_MAP_TO_PRONTO_SEVERITIES = {
+      warn: :warning,
+      error: :error
+    }.freeze
 
     attr_writer :eslint_executable, :cmd_line_opts
 
@@ -25,6 +29,16 @@ module Pronto
 
     def files_to_lint=(regexp)
       @files_to_lint = regexp.is_a?(Regexp) && regexp || Regexp.new(regexp)
+    end
+
+    def severities
+      @severities || DEFAULT_MAP_TO_PRONTO_SEVERITIES
+    end
+
+    def severities=(map)
+      map = map || {}
+      map = map.transform_keys(&:to_sym).transform_values(&:to_sym)
+      @severities = DEFAULT_MAP_TO_PRONTO_SEVERITIES.merge(map)
     end
 
     def config_options
@@ -73,9 +87,10 @@ module Pronto
 
     def new_message(offence, line)
       path  = line.patch.delta.new_file[:path]
-      level = SEVERITY_LEVELS.fetch(offence['severity'], :warning)
+      eslint_severity_level = ESLINT_SEVERITY_LEVELS.fetch(offence['severity'], :warn)
+      pronto_severity_level = severities[eslint_severity_level]
 
-      Message.new(path, line, level, offence['message'], nil, self.class)
+      Message.new(path, line, pronto_severity_level, offence['message'], nil, self.class)
     end
 
     def js_file?(path)
